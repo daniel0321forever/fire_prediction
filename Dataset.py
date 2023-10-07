@@ -17,12 +17,12 @@ from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.feature_selection import SelectKBest, f_regression
 import heapq
-
+import requests
 
 
 random.seed(datetime.datetime.now().timestamp())
 
-def append_dataset(date_time: datetime, loc: tuple, is_fire: bool, params=["T2M", "T2MDEW", "T2MWET", "TS", "WS10M", "WS2M", "WD2M"], community="RE"):
+def append_dataset(date_time: datetime, loc: tuple, is_fire: bool):
     # make file path
     CSV_PATH = os.path.join("dataset", "dataset_temp.csv")
     initial = not os.path.exists(CSV_PATH)
@@ -30,48 +30,88 @@ def append_dataset(date_time: datetime, loc: tuple, is_fire: bool, params=["T2M"
         f = open(CSV_PATH, 'w')
         f.close()
 
-    # process params
-    params_str = ",".join(params)
-
     # process date (get the last five hours)
     start_datetime = date_time - timedelta(hours=5)
-    start_date = start_datetime.__str__().split(" ")[0]
-    start_date = f"{start_date.split('-')[0]}{start_date.split('-')[1]}{start_date.split('-')[2]}"
-    end_date = date_time.__str__().split(" ")[0]
-    end_date = f"{end_date.split('-')[0]}{end_date.split('-')[1]}{end_date.split('-')[2]}"
-    
-    # get API url
-    url = f"https://power.larc.nasa.gov/api/temporal/hourly/point?header=false&parameters={params_str}&community={community}&longitude={loc[0]}&latitude={loc[1]}&start={start_date}&end={end_date}&format=JSON"
+    # print(start_datetime)
+    start_date_ymd = start_datetime.__str__().split(" ")[0]
+    start_date_hms = start_datetime.__str__().split(" ")[1]
 
-    # response
-    response = re.get(url=url, verify=True, timeout=30.00)
-    content = response.content.decode('utf-8')
-    datas = json.loads(content)["properties"]["parameter"] # content dict
-    
+    end_date_ymd = date_time.__str__().split(" ")[0]
+    end_date_hms = date_time.__str__().split(" ")[1]
+
+    date_ymd = f"{end_date_ymd.split('-')[0]}{end_date_ymd.split('-')[1]}{end_date_ymd.split('-')[2]}"
+    time_h = f"{end_date_hms.split(':')[0]}"
     append_data = {
         "is_fire": int(is_fire),
         "lng": loc[0],
         "lat": loc[1],
-        "date": end_date,
-        "time": date_time.__str__().split(" ")[1].split(":")[0]
+        "date": date_ymd,
+        "time": time_h
     }
-    try:
-        for param in datas.keys():
-            for delta_hours in range(5):
-                # process datetime index
-                date, time = (date_time - timedelta(hours=delta_hours)).__str__().split(" ")
-                y, m, d = date.split("-")
-                h = time.split(":")[0]
-                date_time_str = f"{y}{m}{d}{h}"
-                append_data[f"{param}_{delta_hours}h"] = [datas[param][date_time_str]]
 
-        df = pd.DataFrame(append_data)
-        df.to_csv(CSV_PATH, mode='a', header=initial, index=False)
-        return df
-    except KeyError:
-        print("Key Error Occurs")
-        print(datas)
-        return False
+    feature_5hrs = ["soil_type:idx", "relative_humidity_2m:p", "t_2m:C", "wind_speed_2m:ms", "wind_dir_2m:d", "forest_fire_warning:idx"]
+    for i in range(len(feature_5hrs)):
+        print(feature_5hrs)
+        # url = f"https://api.meteomatics.com/2022-10-07T01:00:00Z--2023-10-07T02:00:00Z:PT1H/weather_symbol_24h:idx/52.520551,13.461804/json"
+        # url = f"https://api.meteomatics.com/{start_date_ymd}T{start_date_hms}Z--{end_date_ymd}T{end_date_hms}Z:PT1H/weather_symbol_24h:idx/{loc[1]},{loc[0]}/json"
+        url = f"https://api.meteomatics.com/{start_date_ymd}T{start_date_hms}Z--{end_date_ymd}T{end_date_hms}Z:PT1H/{feature_5hrs[i]}/{loc[1]},{loc[0]}/json"
+        # Define the username and password
+        username = 'nationaltaiwanuniersity_chou_yichieh'
+        password = '1PO7Ukg0v9'
+
+        # response
+        try:
+            # Send the HTTP GET or POST request with Basic Authentication
+            response = requests.get(url, auth=(username, password))
+            # response = re.get(url=url, verify=True, timeout=30.00)
+
+            # Check the response status code and process the data accordingly
+            if response.status_code == 200:
+                # Successfully received data
+                content = response.content.decode('utf-8')
+                datas = json.loads(content) # content dict
+                print(datas)
+            else:
+                # Handle error cases
+                print(f"Request failed with status code {response.status_code}")
+                print(response.text)  # Print the error response if needed
+
+        except requests.exceptions.RequestException as e:
+            print(f"An error occurred: {e}")
+        
+        try:        
+            for data_item in datas.get('data', []):  # Iterate through the 'data' list
+                param = data_item.get('parameter')  # Get the 'parameter' value
+                coordinates = data_item.get('coordinates', [])  # Get the 'coordinates' list
+                
+                date_time_base = date_time
+                for delta_hours in range(1, 6):
+                    date_time = date_time_base - timedelta(hours=delta_hours)  # Calculate datetime
+                    date_time_str = date_time.strftime("%Y-%m-%dT%H:%M:%SZ")  # Format datetime as a string
+
+                    # Search for the corresponding value in the 'coordinates' list
+                    value = None
+                    for coordinate in coordinates:
+                        dates = coordinate.get('dates', [])
+                        for date in dates:
+                            if date.get('date') == date_time_str:
+                                value = date.get('value')
+                                break  # Exit the loop if the value is found
+
+                    # Store the value in the 'append_data' dictionary
+                    if param and value is not None:
+                        append_data[f"{param}_{delta_hours}h"] = [value]
+                        
+            df = pd.DataFrame(append_data)
+            df.to_csv(CSV_PATH, mode='a', header=initial, index=False)
+            return df
+
+        except KeyError:
+            print("Key Error Occurs")
+            print(datas)
+            return False
+
+
 
 def append_fire_index(year=2022):
     # make file path
@@ -220,9 +260,10 @@ def make_dataset():
     #     print(f"lng: {lngs[i]}, lat: {lats[i]}, datetime: {date_times[i].__str__()}")
     #     append_dataset(loc=(lngs[i], lats[i]), date_time=date_times[i], is_fire=True)  
     
+    # "sat_ndvi:idx"
     for i in range(len(n_lngs)):
         print(f"lng: {n_lngs[i]}, lat: {n_lats[i]}, datetime: {n_date_times[i].__str__()}")
-        append_dataset(loc=(n_lngs[i], n_lats[i]), date_time=n_date_times[i], is_fire=False)  
+        append_dataset(loc=(n_lngs[i], n_lats[i]), date_time=n_date_times[i], is_fire=False)
 
 def push_data(source="dataset/dataset_temp.csv", target="dataset/dataset.csv"):
     initial =  not os.path.exists(target)
@@ -308,7 +349,8 @@ class FPDataset():
 
 if __name__ == '__main__':
     data = DataLoader(FPDataset(stage="train"))
-    for i, (x, y) in enumerate(data):
-        if i > 0:
-            break
-        print(x.shape)
+    make_dataset()
+    # for i, (x, y) in enumerate(data):
+    #     if i > 0:
+    #         break
+    #     print(x.shape)
