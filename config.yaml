@@ -1,8 +1,17 @@
 drop_rate: 0.1
 slope: 0.1
-hiddens: [128, 64, 32]
-output_dim: 1
 init_lr: 0.0005
 sched_patience: 10 # for ReduceLROnPlateau
 sched_factor: 0.1 # for ReduceLROnPlateau
 earlystopping_patience: 300
+output_dim: 1
+
+# DNN
+DNN_hiddens_layers: [128, 64, 32]
+
+# FirPRNN
+FirPRNN_dense_layers: [128, 64, 32]
+rnn_hidden: 32
+rnn_layers: 2
+rnn_proj: 16
+
