@@ -13,9 +13,12 @@ class PrintingCallback(Callback):
 
     def on_validation_epoch_end(self, trainer, pl_module) -> None:
         loss = torch.stack(pl_module.val_output['loss']).mean()
+        acc = torch.stack(pl_module.val_output['acc']).mean()
+
         best = pl_module.val_output['best_loss']
-        print(f"\n\n\nval loss {loss:.3f}, best val loss {best:.3f}")
+        print(f"\n\n\nval loss {loss:.3f}, val acc {acc:.3f}, best val loss {best:.3f}")
         pl_module.val_output['loss'].clear()
+        pl_module.val_output['acc'].clear()
 
 class TestingCallback(Callback):
     def on_test_end(self, trainer, pl_module) -> None:

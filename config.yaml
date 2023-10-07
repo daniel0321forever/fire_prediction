@@ -1,6 +1,11 @@
 drop_rate: 0.1
 slope: 0.1
 hiddens: [128, 64, 32]
+
+rnn_hidden: 32
+rnn_layers: 2
+rnn_proj: 16
+
 output_dim: 1
 init_lr: 0.0005
 sched_patience: 10 # for ReduceLROnPlateau

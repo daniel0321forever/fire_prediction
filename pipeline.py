@@ -60,4 +60,42 @@ def train(epoch=10, data_module=Model.FirePredcitDM(), config_dir="config.yaml")
         devices="auto")
     trainer.fit(model, data_module) # the data from module would be move to the same device as model defaulty by lightning
 
-train()
+def train_rnn(epoch=10, data_module=Model.FirePredcitDM(mode="RNN"), config_dir="config.yaml"):
+    # input dim
+    input_dim_hours = data_module.input_dim() #TODO: This should have two values after daily data is appended
+    
+    # configuration
+    with open(config_dir, 'r') as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+    config["input_dim_hours"] = input_dim_hours
+
+    # build model
+    model = Model.FirPRNN(**config)
+    summary(model)
+
+    # callback
+    MyEarlyStopping = EarlyStopping(
+        monitor="val_loss",  # monitor string is the label in logging
+        min_delta=0,
+        patience=config["earlystopping_patience"],
+        mode='min'
+    )
+
+    SaveBestCheckpoint = ModelCheckpoint(
+        monitor="val_loss",
+        mode="min",
+        filename='BESTcheckpoint--{epoch}-{val_loss:.2f}',
+        save_top_k=1,
+    )
+
+    # train
+    trainer = L.Trainer(
+        max_epochs=epoch, 
+        default_root_dir=OUTPUT_DIR, 
+        accelerator=ACCELERATOR, 
+        callbacks=[PrintingCallback(), MyEarlyStopping, SaveBestCheckpoint],
+        devices="auto")
+    trainer.fit(model, data_module) # the data from module would be move to the same device as model defaulty by lightning
+
+
+train_rnn()

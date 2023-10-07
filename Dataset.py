@@ -10,6 +10,7 @@ from datetime import timedelta
 
 import requests as re
 import pandas as pd
+import numpy as np
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -19,6 +20,15 @@ from sklearn.feature_selection import SelectKBest, f_regression
 import heapq
 
 
+"""
+TODO:
+1. process daily data in the init of FPDataset
+2. return 2 values, dims in FPDataset
+3. read 2 dims in pipeline
+4. read 2 values in training, val, testing, pred step
+5. read 2 values in foward
+6. concat two RNN
+"""
 
 random.seed(datetime.datetime.now().timestamp())
 
@@ -216,13 +226,13 @@ def make_dataset():
     lngs, lats, date_times = read_fire_index()
     n_lngs, n_lats, n_date_times = read_no_fire_index()
 
-    # for i in range(len(lngs)):
-    #     print(f"lng: {lngs[i]}, lat: {lats[i]}, datetime: {date_times[i].__str__()}")
-    #     append_dataset(loc=(lngs[i], lats[i]), date_time=date_times[i], is_fire=True)  
+    for i in range(len(lngs)):
+        print(f"lng: {lngs[i]}, lat: {lats[i]}, datetime: {date_times[i].__str__()}")
+        append_dataset(loc=(lngs[i], lats[i]), date_time=date_times[i], is_fire=True)  
     
-    for i in range(len(n_lngs)):
-        print(f"lng: {n_lngs[i]}, lat: {n_lats[i]}, datetime: {n_date_times[i].__str__()}")
-        append_dataset(loc=(n_lngs[i], n_lats[i]), date_time=n_date_times[i], is_fire=False)  
+    # for i in range(len(n_lngs)):
+    #     print(f"lng: {n_lngs[i]}, lat: {n_lats[i]}, datetime: {n_date_times[i].__str__()}")
+    #     append_dataset(loc=(n_lngs[i], n_lats[i]), date_time=n_date_times[i], is_fire=False)  
 
 def push_data(source="dataset/dataset_temp.csv", target="dataset/dataset.csv"):
     initial =  not os.path.exists(target)
@@ -242,13 +252,12 @@ def push_data(source="dataset/dataset_temp.csv", target="dataset/dataset.csv"):
 
 
 class FPDataset():
-    def __init__(self, stage="train", modify="apply") -> None:
+    def __init__(self, stage="train", mode="DNN") -> None:
         super().__init__()
         self.stage = stage
+        self.mode = mode
         TRAIN_DIR = "dataset/dataset.csv"
         TEST_DIR = "dataset/dataset.csv"
-        
-        file_made = os.path.exists(TRAIN_DIR) if stage=="train" else os.path.exists(TEST_DIR)
 
         # prepare dataset
         if stage == "train":
@@ -261,54 +270,104 @@ class FPDataset():
             print("wrong stage")
             raise ValueError
 
-        # get k best
-        if stage == "train":
-            one_hot_pd = pd.get_dummies(df)
-            scores = list(SelectKBest(score_func=f_regression).fit(df, self.is_fire).scores_)
-            feats = [x for x in map(scores.index, heapq.nlargest(3, scores))]
-            print("Columns with highest correlation", one_hot_pd.columns[feats])
+        # normalize
+        numTypeCol = df.select_dtypes(["int", "float", "double"]).columns
+        df[numTypeCol] = (df[numTypeCol] - df[numTypeCol].mean()) / df[numTypeCol].std()
 
-        # one hot
-        # str_cols = list(df.select_dtypes("object").columns)
-        # str_df = df[str_cols]
-        # df.drop(str_cols, axis=1, inplace=True)
+        if mode == "DNN":
+            # get k best
+            if stage == "train":
+                one_hot_pd = pd.get_dummies(df)
+                scores = list(SelectKBest(score_func=f_regression).fit(df, self.is_fire).scores_)
+                feats = [x for x in map(scores.index, heapq.nlargest(3, scores))]
+                print("Columns with highest correlation", one_hot_pd.columns[feats])
 
-        # if stage == "train":
-        #     train_str_df = str_df
-        # elif stage == "test":
-        #     if os.path.exists(TRAIN_DIR):
-        #         train_df = pd.read_csv(TRAIN_DIR).drop("單價", axis=1)
-        #         train_str_df = train_df[str_cols]
-        #     else:
-        #         print("please prepare train data in advance")
-        #         raise FileNotFoundError
-        
-        # enc = OneHotEncoder(handle_unknown='ignore', drop='if_binary').fit(train_str_df) # only encode string part
-        # one_hot = pd.DataFrame(enc.transform(str_df).toarray())
-        # one_hot = pd.concat([df, one_hot], axis=1)
-        # one_hot_np = one_hot.to_numpy()
+            # one hot
+            # str_cols = list(df.select_dtypes("object").columns)
+            # str_df = df[str_cols]
+            # df.drop(str_cols, axis=1, inplace=True)
 
-        # get dataset
-        self.dataset = torch.from_numpy(df.to_numpy()).to(torch.float32)
+            # if stage == "train":
+            #     train_str_df = str_df
+            # elif stage == "test":
+            #     if os.path.exists(TRAIN_DIR):
+            #         train_df = pd.read_csv(TRAIN_DIR).drop("單價", axis=1)
+            #         train_str_df = train_df[str_cols]
+            #     else:
+            #         print("please prepare train data in advance")
+            #         raise FileNotFoundError
+            
+            # enc = OneHotEncoder(handle_unknown='ignore', drop='if_binary').fit(train_str_df) # only encode string part
+            # one_hot = pd.DataFrame(enc.transform(str_df).toarray())
+            # one_hot = pd.concat([df, one_hot], axis=1)
+            # one_hot_np = one_hot.to_numpy()
 
+            # get dataset
+            self.dataset = torch.from_numpy(df.to_numpy()).to(torch.float32)
+
+        elif mode == "RNN":
+            # TODO: Add day data
+            max_hours = 5
+            cols = df.columns
+            cols_h = []
+            for h in range(max_hours):
+                cols_h.append([x for x in cols if (f"{h}h" in x)])
+
+            data_array = []
+            for i in range(df.shape[0]):
+                data_array.append([])
+                for h in range(max_hours):
+                    hour_data = df.iloc[i, :].loc[cols_h[h]]
+                    # print(hour_data)
+                    hour_data = hour_data.to_list()
+                    data_array[-1].append(hour_data)
+            data_torch = torch.Tensor(data_array).to(dtype=torch.float32)
+            self.dataset_hours = data_torch
+            # print(data_torch.shape)
+                
+        else:
+            print("wrong mode")
+            raise ValueError
     
     def __getitem__(self, index):
-        if self.stage == "train" or self.stage == "make_train":
-            return self.dataset[index], self.is_fire[index]
-        elif self.stage == "test":
-            return self.dataset[index]
-        else:
-            print("wrong input")
-    
+        if self.mode == "DNN":
+            if self.stage == "train":
+                return self.dataset[index], self.is_fire[index]
+            elif self.stage == "test":
+                return self.dataset[index]
+            else:
+                print("wrong input")
+        
+        elif self.mode == "RNN":
+            # TODO: Days dataset
+            if self.stage == "train":
+                return self.dataset_hours[index], self.is_fire[index]
+            elif self.stage == "test":
+                return self.dataset[index]
+            else:
+                print("wrong input")
+        
     def __len__(self):
-        return self.dataset.shape[0]
+        if self.mode == "DNN":
+            return self.dataset.shape[0]
+        elif self.mode == "RNN":
+            return self.dataset_hours.shape[0]
     
     def dim(self):
-        return self.dataset.shape[1]
+        if self.mode == "DNN":
+            return self.dataset.shape[-1]
+
+        elif self.mode == "RNN":
+            return self.dataset_hours.shape[-1]
+
+
 
 if __name__ == '__main__':
-    data = DataLoader(FPDataset(stage="train"))
-    for i, (x, y) in enumerate(data):
-        if i > 0:
-            break
-        print(x.shape)
+    push_data(source="dataset/dataset_temp.csv", target="dataset/dataset.csv")
+    # ds = FPDataset(stage="train", mode="RNN")
+    # print(ds.dim())
+    # data = DataLoader(ds)
+    # for i, (x, y) in enumerate(data):
+    #     if i > 0:
+    #         break
+    #     print(x.shape)
