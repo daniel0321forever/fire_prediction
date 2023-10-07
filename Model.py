@@ -8,7 +8,8 @@ from torch_geometric.loader import DataLoader
 import lightning as L
 from lightning.pytorch.utilities.types import EVAL_DATALOADERS, STEP_OUTPUT, TRAIN_DATALOADERS
 
-from Dataset import HousePriceDataset_v2
+import Dataset
+from Dataset import FPDataset
 
 
 """
@@ -18,12 +19,11 @@ NOTE
 """
 Note 2
 - Never use pandas.getdummies, but use sckitlearn.preprocessing instead
-- Use Target Encoding instead
-- Do note that there is nothing stopping you from adding a .device property to the models.
+- Do note that there is nothing stopping you from adding a '.device' property to the models.
 """
 
 
-class HousePriceDataModule(L.LightningDataModule):
+class FirePredcitDM(L.LightningDataModule):
     def __init__(self, batch_size=32) -> None:
         super().__init__()
         self.batch_size = batch_size
@@ -31,8 +31,8 @@ class HousePriceDataModule(L.LightningDataModule):
 
     def setup(self, stage):
         # TODO Adjust dataset
-        dataset = HousePriceDataset_v2(stage="train", modify="apply")
-        pred_dataset = HousePriceDataset_v2(stage="test", modify="apply")
+        dataset = FPDataset(stage="train")
+        pred_dataset = FPDataset(stage="test")
 
         self.train_set, self.val_set, self.test_set = random_split(dataset, [0.7,0.2,0.1])
         self.pred_set = pred_dataset
@@ -54,7 +54,7 @@ class HousePriceDataModule(L.LightningDataModule):
         return pred_set
 
     def input_dim(self):
-        dataset = HousePriceDataset_v2()
+        dataset = FPDataset()
         return dataset.dim()
     
 class DNN(L.LightningModule):
@@ -98,7 +98,7 @@ class DNN(L.LightningModule):
         for layer in self.hiddenLayers:
             x = layer(x)
         
-        x = nn.Sigmoid(x)
+        x = nn.Sigmoid()(x)
         y = self.outputLayer(x)
         return y
     
@@ -112,8 +112,8 @@ class DNN(L.LightningModule):
         fire_pred = self(input)
 
         # TODO: Use Cross Entropy loss
-        mse_loss = nn.CrossEntropyLoss
-        loss = mse_loss(fire, fire_pred)
+        c_e_loss = nn.CrossEntropyLoss()
+        loss = c_e_loss(fire, fire_pred)
         self.log("train_loss", loss, on_epoch=True)
 
         self.train_output["loss"].append(loss)
@@ -121,11 +121,11 @@ class DNN(L.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         # when it is defined, lightning module would call it in each step of training
-        input, price = batch
-        price = price.unsqueeze(1)
-        price_hat = self(input)
-        mse_loss = nn.MSELoss()
-        loss = mse_loss(price, price_hat)
+        input, is_fire = batch
+        is_fire = is_fire.unsqueeze(1)
+        is_fire_hat = self(input)
+        c_e_loss = nn.CrossEntropyLoss()
+        loss = c_e_loss(is_fire, is_fire_hat)
         if loss < self.val_output['best_loss']:
             self.val_output['best_loss'] = loss
 
@@ -134,11 +134,11 @@ class DNN(L.LightningModule):
     
     def test_step(self, batch, batch_idx):
         # when it is defined, lightning module would call it when Trainer.test() is called
-        input, price = batch
-        price = price.unsqueeze(1)
-        price_hat = self(input)
-        mse_loss = nn.MSELoss()
-        loss = mse_loss(price, price_hat).item()
+        input, is_fire = batch
+        is_fire = is_fire.unsqueeze(1)
+        is_fire_hat = self(input)
+        c_e_loss = nn.CrossEntropyLoss()
+        loss = c_e_loss(is_fire, is_fire_hat).item()
 
         self.test_loss += loss
         self.test_len += 1

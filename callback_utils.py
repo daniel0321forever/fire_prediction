@@ -20,17 +20,3 @@ class PrintingCallback(Callback):
 class TestingCallback(Callback):
     def on_test_end(self, trainer, pl_module) -> None:
         print(f"The avg loss is {pl_module.test_loss / pl_module.test_len}")
-
-MyEarlyStopping = EarlyStopping(
-    monitor="val_loss",  # monitor string is the label in logging
-    min_delta=0,
-    patience=100,
-    mode='min'
-)
-
-SaveBestCheckpoint = ModelCheckpoint(
-    monitor="val_loss",
-    mode="min",
-    filename='BESTcheckpoint--{epoch}-{val_loss:.2f}',
-    save_top_k=1,
-)

@@ -1,0 +1,12 @@
+drop_rate: 0.1
+earlystopping_patience: 300
+hiddens:
+- 128
+- 64
+- 32
+init_lr: 0.0005
+input_dim: 39
+output_dim: 1
+sched_factor: 0.1
+sched_patience: 10
+slope: 0.1
