@@ -5,6 +5,7 @@ This is an overview of the process to request data from multiple data points fro
 '''
 
 import os, json, random
+from multiprocessing import Pool
 import datetime
 from datetime import timedelta
 
@@ -22,6 +23,97 @@ import requests
 
 
 random.seed(datetime.datetime.now().timestamp())
+HOURS_DELTA = 10
+DAYS_DELTA = 10
+
+def append_dataset_NASA(date_time: datetime, loc: tuple, is_fire: bool):
+    print(f"date_time: {date_time}, loc: {loc}, is_fire: {is_fire}")
+    try:
+        community="RE"
+        params_hour = ["T2M", "T2MDEW", "T2MWET", "TS", "WS2M", "WD2M", "PW"]
+        params_day = ["T2M", "T2MDEW", "T2MWET", "TS", "WS2M", "WD2M", "TS_MAX"]
+
+        # make file path
+        CSV_PATH = os.path.join("dataset", "dataset_temp.csv")
+        initial = not os.path.exists(CSV_PATH)
+        if initial:
+            f = open(CSV_PATH, 'w')
+            f.close()
+
+        # process params
+        params_str_hours = ",".join(params_hour)
+        params_str_days = ",".join(params_day)
+
+        
+        ##### HOUR #####
+        # process date (get the last five hours)
+        start_datetime = date_time - timedelta(hours=HOURS_DELTA)
+        start_date = start_datetime.__str__().split(" ")[0]
+        start_date = f"{start_date.split('-')[0]}{start_date.split('-')[1]}{start_date.split('-')[2]}"
+
+        end_datetime = date_time - timedelta(hours=1)
+        end_date = end_datetime.__str__().split(" ")[0]
+        end_date = f"{end_date.split('-')[0]}{end_date.split('-')[1]}{end_date.split('-')[2]}"
+
+        # response
+        url = f"https://power.larc.nasa.gov/api/temporal/hourly/point?header=false&parameters={params_str_hours}&community={community}&longitude={loc[0]}&latitude={loc[1]}&start={start_date}&end={end_date}&format=JSON"
+        # print(url)
+        response = re.get(url=url, verify=True, timeout=30.00)
+        content = response.content.decode('utf-8')
+        datas = json.loads(content)["properties"]["parameter"] # content dict
+        
+        append_data_dict = {
+            "is_fire": [int(is_fire)],
+            "lng": [loc[0]],
+            "lat": [loc[1]],
+            "date": [date_time.__str__().split(" ")[0]],
+            "time": [date_time.__str__().split(" ")[1].split(":")[0]]
+        }
+
+        for param in datas.keys():
+            for delta_hours in range(1, HOURS_DELTA + 1):
+                # process datetime index
+                date, time = (date_time - timedelta(hours=delta_hours)).__str__().split(" ")
+                y, m, d = date.split("-")
+                h = time.split(":")[0]
+                date_time_str = f"{y}{m}{d}{h}"
+                append_data_dict[f"{param}_{delta_hours}h"] = [datas[param][date_time_str]]
+
+
+        ### DAYS ####
+        # process date (get the last five hours)
+        start_datetime = date_time - timedelta(days=DAYS_DELTA)
+        start_date = start_datetime.__str__().split(" ")[0]
+        start_date = f"{start_date.split('-')[0]}{start_date.split('-')[1]}{start_date.split('-')[2]}"
+
+        end_datetime = date_time - timedelta(days=1)
+        end_date = end_datetime.__str__().split(" ")[0]
+        end_date = f"{end_date.split('-')[0]}{end_date.split('-')[1]}{end_date.split('-')[2]}"
+        
+        # response
+        url = f"https://power.larc.nasa.gov/api/temporal/daily/point?header=false&parameters={params_str_days}&community={community}&longitude={loc[0]}&latitude={loc[1]}&start={start_date}&end={end_date}&format=JSON"
+        response = re.get(url=url, verify=True, timeout=30.00)
+        content = response.content.decode('utf-8')
+        datas = json.loads(content)["properties"]["parameter"] # content dict
+
+        for param in datas.keys():
+            for delta_days in range(1, DAYS_DELTA + 1):
+                # process datetime index
+                date, time = (date_time - timedelta(days=delta_days)).__str__().split(" ")
+                y, m, d = date.split("-")
+                h = time.split(":")[0]
+                date_time_str = f"{y}{m}{d}"
+                append_data_dict[f"{param}_{delta_days}d"] = [datas[param][date_time_str]]
+    
+        df = pd.DataFrame(append_data_dict)
+        df.to_csv(CSV_PATH, mode='a', header=initial, index=False)
+        return True
+    
+    except:
+        print("Error Occurs")
+        print(response)
+        return False
+
 
 def append_dataset(date_time: datetime, loc: tuple, is_fire: bool):
     # make file path
@@ -57,8 +149,8 @@ def append_dataset(date_time: datetime, loc: tuple, is_fire: bool):
         # url = f"https://api.meteomatics.com/{start_date_ymd}T{start_date_hms}Z--{end_date_ymd}T{end_date_hms}Z:PT1H/weather_symbol_24h:idx/{loc[1]},{loc[0]}/json"
         url = f"https://api.meteomatics.com/{start_date_ymd}T{start_date_hms}Z--{end_date_ymd}T{end_date_hms}Z:PT1H/{feature_5hrs[i]}/{loc[1]},{loc[0]}/json"
         # Define the username and password
-        username = 'nationaltaiwanuniersity_chou_yichieh'
-        password = '1PO7Ukg0v9'
+        username = 'nationaltaiwanuniversity_fang_wei'
+        password = '3Fq2G4sh5E'
 
         # response
         try:
@@ -71,7 +163,6 @@ def append_dataset(date_time: datetime, loc: tuple, is_fire: bool):
                 # Successfully received data
                 content = response.content.decode('utf-8')
                 datas = json.loads(content) # content dict
-                print(datas)
             else:
                 # Handle error cases
                 print(f"Request failed with status code {response.status_code}")
@@ -111,8 +202,6 @@ def append_dataset(date_time: datetime, loc: tuple, is_fire: bool):
             print("Key Error Occurs")
             print(datas)
             return False
-
-
 
 def append_fire_index(year=2022):
     # make file path
@@ -215,14 +304,15 @@ def read_fire_index(path="dataset/fire_index.csv"):
     years = df["acq_date"].str.split("-").str[0]
     months = df["acq_date"].str.split("-").str[1]
     days = df["acq_date"].str.split("-").str[2]
-    hours = 18
+    hours = df["acq_time"] / 100
 
     date_times = []
     for i in range(len(years)):
         y = int(years[i])
         m = int(months[i])
         d = int(days[i])
-        h = int(hours)
+        h = int(hours[i])
+
         date_time = datetime.datetime(y,m,d,h)
         date_times.append(date_time)
 
@@ -250,21 +340,34 @@ def read_no_fire_index(path="dataset/no_fire_index.csv"):
     print(len(lngs), len(lats), len(date_times))
     return lngs, lats, date_times
 
-def make_dataset():
+def make_dataset(start=0):
     # date_time = datetime.datetime(2023, 3, 21, 1)
     # append_dataset(date_time=date_time, loc=(122, 23.4))
 
     lngs, lats, date_times = read_fire_index()
     n_lngs, n_lats, n_date_times = read_no_fire_index()
 
-    for i in range(len(lngs)):
-        print(f"lng: {lngs[i]}, lat: {lats[i]}, datetime: {date_times[i].__str__()}")
-        append_dataset(loc=(lngs[i], lats[i]), date_time=date_times[i], is_fire=True)  
+    inputs = []
+
+    for i in range(start, min(len(n_lngs), len(lngs))):
+        f_tuple = tuple([date_times[i], (lngs[i], lats[i]), 1])
+        inputs.append(f_tuple)
+        nf_tuple = tuple([n_date_times[i], (n_lngs[i], n_lats[i]), 0])
+        inputs.append(nf_tuple)
+
+    pool = Pool(30)
+    res = pool.starmap(append_dataset_NASA, inputs)
+
+    # for i in range(min(len(n_lngs), len(lngs))):
+    #     print("i =", i)
+    #     print(f"lng: {lngs[i]}, lat: {lats[i]}, datetime: {date_times[i].__str__()}")
+    #     append_dataset_NASA(loc=(lngs[i], lats[i]), date_time=date_times[i], is_fire=True)  
+
+    #     print(f"lng: {n_lngs[i]}, lat: {n_lats[i]}, datetime: {n_date_times[i].__str__()}")
+    #     append_dataset_NASA(loc=(n_lngs[i], n_lats[i]), date_time=n_date_times[i], is_fire=False)
     
     # "sat_ndvi:idx"
-    for i in range(len(n_lngs)):
-        print(f"lng: {n_lngs[i]}, lat: {n_lats[i]}, datetime: {n_date_times[i].__str__()}")
-        append_dataset(loc=(n_lngs[i], n_lats[i]), date_time=n_date_times[i], is_fire=False)
+
     # for i in range(len(n_lngs)):
     #     print(f"lng: {n_lngs[i]}, lat: {n_lats[i]}, datetime: {n_date_times[i].__str__()}")
     #     append_dataset(loc=(n_lngs[i], n_lats[i]), date_time=n_date_times[i], is_fire=False)  
@@ -286,7 +389,7 @@ def push_data(source="dataset/dataset_temp.csv", target="dataset/dataset.csv"):
     print(df.tail())
 
 def clean_cluster(path="dataset/landsat_12-22_fire.csv"):
-    df = pd.read_csv(path).iloc[:, 1:]
+    df = pd.read_csv(path)
     
     def is_far(loc1: tuple, loc2: tuple):
         if abs(loc1[0] - loc2[0]) < 0.1 and abs(loc1[1] - loc2[1]) < 0.1:
@@ -444,8 +547,33 @@ class FPDataset():
 
 
 if __name__ == '__main__':
-    data = DataLoader(FPDataset(stage="train"))
-    make_dataset()
+    # df = pd.read_csv("dataset/no_fire_index.csv")
+    # drop_list = []
+    # for i in range(df.shape[0]):
+    #     ser = df.iloc[i]
+    #     if type(ser["acq_date"]) is not str:
+    #         drop_list.append(i)
+    #         continue
+    #     try:
+    #         y, m, d = ser["acq_date"].split("-")
+    #         if int(m) < 10:
+    #             m = "0" + m
+    #             print(m)
+    #         if int(d) < 10:
+    #             d = "0" + d
+    #         date = "-".join([y, m, d])
+    #         print(date)
+    #         df.loc[i, "acq_date"] = date
+    #     except:
+    #         print("error")
+    #         drop_list.append(i)
+
+    
+    # df = df.drop(drop_list, axis=0)
+    # df.to_csv("no_fire.csv", index=False)    
+
+    make_dataset(start=300)
+
     # for i, (x, y) in enumerate(data):
     #     if i > 0:
     #         break
