@@ -60,23 +60,23 @@ class DNN(L.LightningModule):
         # TODO: take configruation from config file only
         config.setdefault("input_dim", 0)
         config.setdefault("output_dim", 1)
-        config.setdefault("hiddens", [128, 64, 32])
+        config.setdefault("DNN_hiddens_layers", [128, 64, 32])
         config.setdefault("drop_rate", 0.3)
         config.setdefault("slope", 0.1)
 
         hiddenLayersList = []
-        for i in range(len(config["hiddens"]) - 1):
-            hiddenLayersList.append(nn.Linear(config["hiddens"][i], config["hiddens"][i+1]))
+        for i in range(len(config["DNN_hiddens_layers"]) - 1):
+            hiddenLayersList.append(nn.Linear(config["DNN_hiddens_layers"][i], config["DNN_hiddens_layers"][i+1]))
             hiddenLayersList.append(nn.LeakyReLU(config["slope"]))
             hiddenLayersList.append(nn.Dropout(config["drop_rate"]))
 
         self.inputLayer = nn.Sequential(
-            nn.Linear(config["input_dim"], config["hiddens"][0]),
+            nn.Linear(config["input_dim"], config["DNN_hiddens_layers"][0]),
             nn.LeakyReLU(negative_slope=config["drop_rate"])
         )
         self.hiddenLayers = nn.ModuleList(hiddenLayersList)
         self.outputLayer = nn.Sequential(
-            nn.Linear(config["hiddens"][-1], config["output_dim"]),
+            nn.Linear(config["DNN_hiddens_layers"][-1], config["output_dim"]),
         )
 
         self.train_output = {"loss": []}
@@ -161,7 +161,7 @@ class FirPRNN(L.LightningModule):
         config.setdefault("input_dim_days", 1)
         config.setdefault("output_dim", 1)
         config.setdefault("rnn_hidden", 32)
-        config.setdefault("hiddens", [128])
+        config.setdefault("FirPRNN_dense_layers", [128])
         config.setdefault("drop_rate", 0.3)
         config.setdefault("slope", 0.1)
 
@@ -183,18 +183,18 @@ class FirPRNN(L.LightningModule):
         # dense layers
         denseLayerList = []
         self.inputLayer = nn.Sequential(
-            nn.Linear(config["rnn_proj"], config["hiddens"][0]),
+            nn.Linear(config["rnn_proj"], config["FirPRNN_dense_layers"][0]),
             nn.LeakyReLU(config["slope"]),
             nn.Dropout(config["drop_rate"]),
         )
-        for i in range(len(config["hiddens"]) - 1):
-            denseLayerList.append(nn.Linear(config["hiddens"][i], config["hiddens"][i+1]))
+        for i in range(len(config["FirPRNN_dense_layers"]) - 1):
+            denseLayerList.append(nn.Linear(config["FirPRNN_dense_layers"][i], config["FirPRNN_dense_layers"][i+1]))
             denseLayerList.append(nn.LeakyReLU(config["slope"]))
             denseLayerList.append(nn.Dropout(config["drop_rate"]))
         self.DenseLayers = nn.ModuleList(denseLayerList)
 
         self.outputLayer = nn.Sequential(
-            nn.Linear(config["hiddens"][-1], config["output_dim"]),
+            nn.Linear(config["FirPRNN_dense_layers"][-1], config["output_dim"]),
             nn.Sigmoid(),
         )
         

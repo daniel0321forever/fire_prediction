@@ -98,4 +98,4 @@ def train_rnn(epoch=10, data_module=Model.FirePredcitDM(mode="RNN"), config_dir=
     trainer.fit(model, data_module) # the data from module would be move to the same device as model defaulty by lightning
 
 
-train_rnn()
+train_rnn(epoch=1000)
