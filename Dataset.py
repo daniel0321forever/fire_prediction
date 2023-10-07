@@ -250,6 +250,52 @@ def push_data(source="dataset/dataset_temp.csv", target="dataset/dataset.csv"):
 
     print(df.tail())
 
+def clean_cluster(path="dataset/landsat_12-22_fire.csv"):
+    df = pd.read_csv(path).iloc[:, 1:]
+    
+    def is_far(loc1: tuple, loc2: tuple):
+        if abs(loc1[0] - loc2[0]) < 0.1 and abs(loc1[1] - loc2[1]) < 0.1:
+            return False
+        return True
+
+    df_concat = []
+    all_dates = df["acq_date"].unique()
+
+    for date in all_dates:
+        distinct_loc = []
+        del_ind = []
+
+        df_date = df[df["acq_date"] == date].reset_index()
+        print(df_date)
+
+        for i in range(df_date.shape[0]):
+            s_lng = round(df_date["longitude"].iloc[i].item(), 2)
+            s_lat = round(df_date["latitude"].iloc[i].item(), 2)
+            s_loc = (s_lng, s_lat)
+            # print(i)
+            # print(s_loc)
+
+            if len(distinct_loc) == 0:
+                distinct_loc.append(s_loc)
+            else:
+                delete = False
+                for loc in distinct_loc:
+                    # print("loc is ", loc)
+                    if not is_far(loc, s_loc):
+                        # print("close, delete it")
+                        del_ind.append(i)
+                        delete = True
+                        break
+
+                if delete == False:
+                    # print("far, append it")
+                    distinct_loc.append(s_loc)
+            
+        df_date = df_date.drop(del_ind)
+        df_concat.append(df_date)
+
+    new_df = pd.concat(df_concat)
+    new_df.to_csv("landsat_12-22_fire_new.csv")
 
 class FPDataset():
     def __init__(self, stage="train", mode="DNN") -> None:
@@ -363,7 +409,7 @@ class FPDataset():
 
 
 if __name__ == '__main__':
-    push_data(source="dataset/dataset_temp.csv", target="dataset/dataset.csv")
+
     # ds = FPDataset(stage="train", mode="RNN")
     # print(ds.dim())
     # data = DataLoader(ds)
@@ -371,3 +417,5 @@ if __name__ == '__main__':
     #     if i > 0:
     #         break
     #     print(x.shape)
+
+    df = pd.read_csv("dataset/no_fire_index.csv")
