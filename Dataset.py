@@ -609,12 +609,13 @@ class FPDataset():
             return self.dataset_days.shape[-1]
 
 
-
 if __name__ == '__main__':
+    df = pd.read_csv("dataset/data_2.csv", delimiter=";").iloc[:, 3:]
+    df.to_csv("dataset/data_2.csv", index=False)
 
-    data = FPDataset("train", "RNN")
-    for i, (x, y, z) in enumerate(data):
-        if i > 0:
-            break
-        print(x.shape) # month
-        print(y.shape) # day
+    # data = FPDataset("train", "RNN")
+    # for i, (x, y, z) in enumerate(data):
+    #     if i > 0:
+    #         break
+    #     print(x.shape) # month
+    #     print(y.shape) # day
