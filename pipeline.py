@@ -231,7 +231,7 @@ def predict(ckpt_dir: str):
     HP_DIR = "/".join(CKPT_DIR.split("/")[:2]) + "/hparams.yaml"
 
     # build model
-    model = Model.FirPRNN.load_from_checkpoint(CKPT_DIR, hparams_file=HP_DIR).to(device=DEVICE)
+    model = Model.FirPRNN.load_from_checkpoint(CKPT_DIR, hparams_file=HP_DIR, map_location=torch.device(DEVICE))
     model.eval() # evaluation mode
     model.freeze()
 
@@ -245,10 +245,11 @@ def predict(ckpt_dir: str):
         input_tensor = torch.Tensor()
         # for lng in range(-124.75, -64.75, 0.5):
         #     for lat in range(24.75, 54.75, 0.5):
-        lng = -124.75
-        lat = 24.75
-        while lng < -122.75:
-            while lat < 26.75:
+        cent_lng = -118.8
+        cent_lat = 34
+
+        for lng in np.arange(cent_lng - 2, cent_lng + 2, 0.5):
+            for lat in np.arange(cent_lat - 0.5, cent_lat + 2, 0.5):
                 # the input is initially on cpu, while the model is loaded to GPU by default
                 input_day = get_current_climate_data((lng, lat)) # 
                 input_day = input_day.to(device=DEVICE)
@@ -262,9 +263,8 @@ def predict(ckpt_dir: str):
                 result_dict["fire_probibility"].append(fire_prob)
 
                 # wait
-                lng += 0.5
-                lat += 0.5
                 time.sleep(3)
+
     
     result = pd.DataFrame(result_dict)
     result.to_csv("result.csv", index=False)
