@@ -12,4 +12,5 @@ However, as the data API we are currently using for our App cannot receive the m
 ## Data and API
 The data we use to train our model is mainly extracted from NASA POWER API and FIRMS API.
 https://power.larc.nasa.gov/docs/services/api/  
+
 https://firms.modaps.eosdis.nasa.gov/
