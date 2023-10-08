@@ -124,6 +124,7 @@ class DNN(L.LightningModule):
             self.val_output['best_loss'] = loss
 
         self.log("val_loss", loss, on_epoch=True)
+
         self.val_output["loss"].append(loss)
     
     def test_step(self, batch, batch_idx):
@@ -151,7 +152,6 @@ class FirPRNN(L.LightningModule):
     def __init__(self, **config) -> None:
         super().__init__()
 
-        config.setdefault("input_dim_months", 0)
         config.setdefault("input_dim_days", 1)
         config.setdefault("output_dim", 1)
         config.setdefault("rnn_hidden", 32)
@@ -160,12 +160,12 @@ class FirPRNN(L.LightningModule):
         config.setdefault("slope", 0.1)
 
         # RNN layers
-        self.months_lstm = torch.nn.LSTM(
-            config["input_dim_months"], # the input dim of each time data
-            config["rnn_hidden"], 
-            config["rnn_layers"], 
-            proj_size = config["rnn_proj"] # output dim of each time data
-        )
+        # self.months_lstm = torch.nn.LSTM(
+        #     config["input_dim_months"], # the input dim of each time data
+        #     config["rnn_hidden"], 
+        #     config["rnn_layers"], 
+        #     proj_size = config["rnn_proj"] # output dim of each time data
+        # )
 
         self.days_lstm = torch.nn.LSTM(
             config["input_dim_days"], # the input dim of each time data
@@ -177,7 +177,7 @@ class FirPRNN(L.LightningModule):
         # dense layers
         denseLayerList = []
         self.inputLayer = nn.Sequential(
-            nn.Linear(config["rnn_proj"] * 2, config["FirPRNN_dense_layers"][0]),
+            nn.Linear(config["rnn_proj"], config["FirPRNN_dense_layers"][0]),
             nn.LeakyReLU(config["slope"]),
             nn.Dropout(config["drop_rate"]),
         )
@@ -202,26 +202,28 @@ class FirPRNN(L.LightningModule):
         self.config = config
         self.save_hyperparameters()
 
-    def forward(self, x_h, x_d) -> Any:
+    def forward(self, x_d) -> Any:
         # It would be called when we run the class or explicilty call foward method. The training 
         # step would call this method to get the output of the model and find loss
 
         # TODO: Take two parts of input respectively, and get output out of it
 
         # hours
-        x_h, (h_0, c_0) = self.months_lstm(x_h) # shape (batch_size, length, dim)
-        # print("x_h shape", x_h.shape)
-        x_final_h = x_h.select(dim=1, index=-1) # shape (batch_size, dim)
-        # print("x_final_h shape", x_final_h.shape)
+        # x_h, (h_0, c_0) = self.months_lstm(x_h) # shape (batch_size, length, dim)
+        # x_final_h = x_h.select(dim=1, index=-1) # shape (batch_size, dim)
+
+        # months
+        # x_m, (h_0, c_0) = self.months_lstm(x_m) # shape (batch_size, length, dim)
+        # x_final_m = x_m.select(dim=1, index=-1) # shape (batch_size, dim)
+
 
         # days
         x_d, (h_1, c_1) = self.days_lstm(x_d)
-        # print("x_d shape", x_d.shape)
         x_final_d = x_d.select(dim=1, index=-1)
-        # print(x_final_d.shape)
 
         # TODO: concat
-        x_concat = torch.concat([x_final_d, x_final_h], dim=-1)
+        # x_concat = torch.concat([x_final_d, x_final_m], dim=-1)
+        x_concat = x_final_d
         # print("x_concat shape: ", x_concat.shape)
         
         # pass
@@ -237,9 +239,9 @@ class FirPRNN(L.LightningModule):
         # when training depending on the loss from the training step
         
         # TODO: later we should add daily input
-        input_months, input_days, is_fire = batch
+        input_days, is_fire = batch
         is_fire = is_fire.unsqueeze(1)
-        is_fire_pred = self(input_months, input_days)
+        is_fire_pred = self(input_days)
 
         # loss
         c_e_loss = nn.BCELoss()
@@ -254,10 +256,10 @@ class FirPRNN(L.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        # when it is defined, lightning module would call it in each step of training
-        input_months, input_days, is_fire = batch
+        ## when it is defined, lightning module would call it in each step of training
+        input_days, is_fire = batch
         is_fire = is_fire.unsqueeze(1)
-        is_fire_pred = self(input_months, input_days)
+        is_fire_pred = self(input_days)
 
         # loss
         c_e_loss = nn.BCELoss()
@@ -275,9 +277,9 @@ class FirPRNN(L.LightningModule):
 
     def test_step(self, batch, batch_idx):
         # when it is defined, lightning module would call it when Trainer.test() is called
-        input_months, input_days, is_fire = batch
+        input_days, is_fire = batch
         is_fire = is_fire.unsqueeze(1)
-        is_fire_pred = self(input_months, input_days)
+        is_fire_pred = self(input_days)
         
         # loss
         c_e_loss = nn.BCELoss()

@@ -1,0 +1,19 @@
+DNN_hiddens_layers:
+- 128
+- 64
+- 32
+FirPRNN_dense_layers:
+- 258
+- 128
+- 64
+drop_rate: 0.5
+earlystopping_patience: 300
+init_lr: 0.0008
+input_dim_days: 7
+output_dim: 1
+rnn_hidden: 64
+rnn_layers: 3
+rnn_proj: 16
+sched_factor: 0.1
+sched_patience: 10
+slope: 0.1

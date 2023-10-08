@@ -8,7 +8,7 @@ from lightning.pytorch.callbacks import EarlyStopping, Callback, ModelCheckpoint
 class PrintingCallback(Callback):
     def on_train_epoch_end(self, trainer, pl_module):
         loss = torch.stack(pl_module.train_output['loss']).mean()
-        # print(f"\n\ntraining loss: {loss:.3f}")
+        print(f"\n\ntraining loss: {loss:.3f}")
         pl_module.train_output['loss'].clear()
 
     def on_validation_epoch_end(self, trainer, pl_module) -> None:

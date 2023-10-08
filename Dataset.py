@@ -152,7 +152,7 @@ def append_dataset_NASA(date_time: datetime, loc: tuple, is_fire: bool):
             time.sleep(300)
 
     # sleep
-    time.sleep(10)
+    time.sleep(30)
 
 def append_dataset(date_time: datetime, loc: tuple, is_fire: bool):
     # make file path
@@ -393,7 +393,7 @@ def make_dataset(start=0):
         nf_tuple = tuple([n_date_times[i], (n_lngs[i], n_lats[i]), 0])
         inputs.append(nf_tuple)
 
-    pool = Pool(60)
+    pool = Pool(40)
     res = pool.starmap(append_dataset_NASA, inputs)
 
 def push_data(source="dataset/dataset_temp.csv", target="dataset/dataset.csv"):
@@ -483,39 +483,41 @@ class FPDataset():
         df[numTypeCol] = (df[numTypeCol] - df[numTypeCol].mean()) / df[numTypeCol].std()
 
         if mode == "DNN":
+            df = df[numTypeCol]
+
             # get k best
-            if stage == "train":
-                one_hot_pd = pd.get_dummies(df)
-                scores = list(SelectKBest(score_func=f_regression).fit(df, self.is_fire).scores_)
-                feats = [x for x in map(scores.index, heapq.nlargest(3, scores))]
-                print("Columns with highest correlation", one_hot_pd.columns[feats])
-
-            # one hot
-            # str_cols = list(df.select_dtypes("object").columns)
-            # str_df = df[str_cols]
-            # df.drop(str_cols, axis=1, inplace=True)
-
             # if stage == "train":
-            #     train_str_df = str_df
-            # elif stage == "test":
-            #     if os.path.exists(TRAIN_DIR):
-            #         train_df = pd.read_csv(TRAIN_DIR).drop("單價", axis=1)
-            #         train_str_df = train_df[str_cols]
-            #     else:
-            #         print("please prepare train data in advance")
-            #         raise FileNotFoundError
+            #     # one_hot_pd = pd.get_dummies(df)
+            #     # scores = list(SelectKBest(score_func=f_regression).fit(df, self.is_fire).scores_)
+            #     # feats = [x for x in map(scores.index, heapq.nlargest(3, scores))]
+            #     # print("Columns with highest correlation", one_hot_pd.columns[feats])
+
+            # # one hot
+            # # str_cols = list(df.select_dtypes("object").columns)
+            # # str_df = df[str_cols]
+            # # df.drop(str_cols, axis=1, inplace=True)
+
+            # # if stage == "train":
+            # #     train_str_df = str_df
+            # # elif stage == "test":
+            # #     if os.path.exists(TRAIN_DIR):
+            # #         train_df = pd.read_csv(TRAIN_DIR).drop("單價", axis=1)
+            # #         train_str_df = train_df[str_cols]
+            # #     else:
+            # #         print("please prepare train data in advance")
+            # #         raise FileNotFoundError
             
-            # enc = OneHotEncoder(handle_unknown='ignore', drop='if_binary').fit(train_str_df) # only encode string part
-            # one_hot = pd.DataFrame(enc.transform(str_df).toarray())
-            # one_hot = pd.concat([df, one_hot], axis=1)
-            # one_hot_np = one_hot.to_numpy()
+            # # enc = OneHotEncoder(handle_unknown='ignore', drop='if_binary').fit(train_str_df) # only encode string part
+            # # one_hot = pd.DataFrame(enc.transform(str_df).toarray())
+            # # one_hot = pd.concat([df, one_hot], axis=1)
+            # # one_hot_np = one_hot.to_numpy()
 
             # get dataset
             self.dataset = torch.from_numpy(df.to_numpy()).to(torch.float32)
 
         elif mode == "RNN":
             # ensure, should not change
-            MIN_DAYS_DELTA = 3
+            MIN_DAYS_DELTA = 4 # The data is obtained in yesterday, so it should be one more day
             HOURS_DELTA = 12
             DAYS_DELTA = 12
             MONTHS_DELTA = 4
@@ -530,18 +532,28 @@ class FPDataset():
                 cols_m.append([x for x in cols if (f"_{m}m" in x)])
 
             for d in range(MIN_DAYS_DELTA, DAYS_DELTA + 1):
-                cols_d.append([x for x in cols if (f"_{m}m" in x)])
+                cols_d.append([x for x in cols if (f"_{d}d" in x)])
             
             # print(cols_d)
 
             # month / hours
             data_array = []
             for i in range(df.shape[0]):
+                lng = df.iloc[i].loc["lng"].item()
+                lat = df.iloc[i].loc["lat"].item()
+
+                now_year, now_month, now_day = df.iloc[i]["date"].split("-")
+                now_date = datetime.date(int(now_year), int(now_month), int(now_day))
+
                 data_array.append([])
-                for m in range(MONTHS_DELTA): # the index should -1
-                    month_data = df.iloc[i, :].loc[cols_m[m]]
+                for m in range(MONTHS_DELTA): # the index should -1 | each days
+                    month = (now_date - relativedelta(month=m+1)).month
+                    month_data = df.iloc[i, :].loc[cols_m[m]] 
                     # print(hour_data)
-                    month_data = month_data.to_list()
+                    month_data = month_data.to_list() # all params in that day
+                    month_data.append(lng)
+                    month_data.append(lat)
+                    month_data.append(month)
                     data_array[-1].append(month_data)
             data_torch = torch.Tensor(data_array).to(dtype=torch.float32)
             self.dataset_months = data_torch
@@ -576,9 +588,9 @@ class FPDataset():
         elif self.mode == "RNN":
             # TODO: Days dataset
             if self.stage == "train":
-                return self.dataset_months[index], self.dataset_days[index], self.is_fire[index]
+                return self.dataset_days[index], self.is_fire[index]
             elif self.stage == "test":
-                return self.dataset_months[index], self.dataset_days[index]
+                return self.dataset_days[index]
             else:
                 print("wrong input")
                 raise ValueError
@@ -594,17 +606,15 @@ class FPDataset():
             return self.dataset.shape[-1]
 
         elif self.mode == "RNN":
-            return self.dataset_months.shape[-1], self.dataset_days.shape[-1]
+            return self.dataset_days.shape[-1]
 
 
 
 if __name__ == '__main__':
 
-    make_dataset(240)
-
-    # data = FPDataset("train", "RNN")
-    # for i, (x, y, z) in enumerate(data):
-    #     if i > 0:
-    #         break
-    #     print(x.shape) # month
-    #     print(y.shape) # day
+    data = FPDataset("train", "RNN")
+    for i, (x, y, z) in enumerate(data):
+        if i > 0:
+            break
+        print(x.shape) # month
+        print(y.shape) # day
