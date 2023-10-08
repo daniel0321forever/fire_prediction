@@ -62,16 +62,17 @@ def train(epoch=10, data_module=Model.FirePredcitDM(), config_dir="config.yaml")
 
 def train_rnn(epoch=10, data_module=Model.FirePredcitDM(mode="RNN"), config_dir="config.yaml"):
     # input dim
-    input_dim_hours = data_module.input_dim() #TODO: This should have two values after daily data is appended
+    input_dim_months, input_dim_days = data_module.input_dim() #TODO: This should have two values after daily data is appended
     
     # configuration
     with open(config_dir, 'r') as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
-    config["input_dim_hours"] = input_dim_hours
+    config["input_dim_months"] = input_dim_months
+    config["input_dim_days"] = input_dim_days
 
     # build model
     model = Model.FirPRNN(**config)
-    summary(model)
+    # summary(model)
 
     # callback
     MyEarlyStopping = EarlyStopping(
@@ -98,4 +99,4 @@ def train_rnn(epoch=10, data_module=Model.FirePredcitDM(mode="RNN"), config_dir=
     trainer.fit(model, data_module) # the data from module would be move to the same device as model defaulty by lightning
 
 
-train_rnn(epoch=1000)
+train_rnn(epoch=100)

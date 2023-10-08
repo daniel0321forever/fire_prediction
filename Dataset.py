@@ -8,6 +8,8 @@ import os, json, random
 from multiprocessing import Pool
 import datetime
 from datetime import timedelta
+from dateutil.relativedelta import relativedelta
+import time
 
 import requests as re
 import pandas as pd
@@ -23,15 +25,20 @@ import requests
 
 
 random.seed(datetime.datetime.now().timestamp())
-HOURS_DELTA = 10
-DAYS_DELTA = 10
+MIN_DAYS_DELTA = 1
+HOURS_DELTA = 12
+DAYS_DELTA = 20
+MONTHS_DELTA = 4
 
 def append_dataset_NASA(date_time: datetime, loc: tuple, is_fire: bool):
     print(f"date_time: {date_time}, loc: {loc}, is_fire: {is_fire}")
+
     try:
         community="RE"
-        params_hour = ["T2M", "T2MDEW", "T2MWET", "TS", "WS2M", "WD2M", "PW"]
+        params_hour = ["T2M", "T2MDEW", "T2MWET", "TS", "WS2M", "WD2M"]
         params_day = ["T2M", "T2MDEW", "T2MWET", "TS", "WS2M", "WD2M", "TS_MAX"]
+        params_month = ["T2M", "T2MDEW", "T2MWET", "TS", "WS2M", "WD2M", "TS_MAX"]
+
 
         # make file path
         CSV_PATH = os.path.join("dataset", "dataset_temp.csv")
@@ -43,42 +50,70 @@ def append_dataset_NASA(date_time: datetime, loc: tuple, is_fire: bool):
         # process params
         params_str_hours = ",".join(params_hour)
         params_str_days = ",".join(params_day)
+        params_str_months = ",".join(params_month)
 
+        append_data_dict = {
+                "is_fire": [int(is_fire)],
+                "lng": [loc[0]],
+                "lat": [loc[1]],
+                "date": [date_time.__str__().split(" ")[0]],
+                "time": [date_time.__str__().split(" ")[1].split(":")[0]]
+            }
         
         ##### HOUR #####
         # process date (get the last five hours)
-        start_datetime = date_time - timedelta(hours=HOURS_DELTA)
+        have_hours = False
+        if have_hours:
+            start_datetime = date_time - timedelta(hours=HOURS_DELTA)
+            start_date = start_datetime.__str__().split(" ")[0]
+            start_date = f"{start_date.split('-')[0]}{start_date.split('-')[1]}{start_date.split('-')[2]}"
+
+            end_datetime = date_time - timedelta(hours=1)
+            end_date = end_datetime.__str__().split(" ")[0]
+            end_date = f"{end_date.split('-')[0]}{end_date.split('-')[1]}{end_date.split('-')[2]}"
+
+            # response
+            url = f"https://power.larc.nasa.gov/api/temporal/hourly/point?header=false&parameters={params_str_hours}&community={community}&longitude={loc[0]}&latitude={loc[1]}&start={start_date}&end={end_date}&format=JSON"
+            response = re.get(url=url, verify=True, timeout=30.00)
+            content = response.content.decode('utf-8')
+            datas = json.loads(content)["properties"]["parameter"] # content dict
+
+            for param in datas.keys():
+                for delta_hours in range(1, HOURS_DELTA + 1):
+                    # process datetime index
+                    date, TIME = (date_time - timedelta(days=MIN_DAYS_DELTA, hours=delta_hours)).__str__().split(" ")
+                    y, m, d = date.split("-")
+                    h = TIME.split(":")[0]
+                    date_time_str = f"{y}{m}{d}{h}"
+                    append_data_dict[f"{param}_{delta_hours}h"] = [datas[param][date_time_str]]
+    
+        #### MONTH ####
+        # process date (get the last five hours)
+        start_datetime = date_time - relativedelta(month=MONTHS_DELTA)
         start_date = start_datetime.__str__().split(" ")[0]
-        start_date = f"{start_date.split('-')[0]}{start_date.split('-')[1]}{start_date.split('-')[2]}"
+        start_year = start_date.split('-')[0] # year
 
-        end_datetime = date_time - timedelta(hours=1)
+        end_datetime = date_time - relativedelta(month=1)
         end_date = end_datetime.__str__().split(" ")[0]
-        end_date = f"{end_date.split('-')[0]}{end_date.split('-')[1]}{end_date.split('-')[2]}"
-
+        end_year = end_date.split('-')[0]
+        
         # response
-        url = f"https://power.larc.nasa.gov/api/temporal/hourly/point?header=false&parameters={params_str_hours}&community={community}&longitude={loc[0]}&latitude={loc[1]}&start={start_date}&end={end_date}&format=JSON"
+        url = f"https://power.larc.nasa.gov/api/temporal/monthly/point?header=false&parameters={params_str_months}&community={community}&longitude={loc[0]}&latitude={loc[1]}&start={start_year}&end={end_year}&format=JSON"
         # print(url)
         response = re.get(url=url, verify=True, timeout=30.00)
         content = response.content.decode('utf-8')
         datas = json.loads(content)["properties"]["parameter"] # content dict
-        
-        append_data_dict = {
-            "is_fire": [int(is_fire)],
-            "lng": [loc[0]],
-            "lat": [loc[1]],
-            "date": [date_time.__str__().split(" ")[0]],
-            "time": [date_time.__str__().split(" ")[1].split(":")[0]]
-        }
 
         for param in datas.keys():
-            for delta_hours in range(1, HOURS_DELTA + 1):
+            for delta_m in range(1, MONTHS_DELTA + 1):
                 # process datetime index
-                date, time = (date_time - timedelta(hours=delta_hours)).__str__().split(" ")
+                date, TIME = (date_time - relativedelta(month=delta_m)).__str__().split(" ")
                 y, m, d = date.split("-")
-                h = time.split(":")[0]
-                date_time_str = f"{y}{m}{d}{h}"
-                append_data_dict[f"{param}_{delta_hours}h"] = [datas[param][date_time_str]]
+                h = TIME.split(":")[0]
+                date_time_str = f"{y}{m}"
+                append_data_dict[f"{param}_{delta_m}m"] = [datas[param][date_time_str]]
 
+        
 
         ### DAYS ####
         # process date (get the last five hours)
@@ -86,7 +121,7 @@ def append_dataset_NASA(date_time: datetime, loc: tuple, is_fire: bool):
         start_date = start_datetime.__str__().split(" ")[0]
         start_date = f"{start_date.split('-')[0]}{start_date.split('-')[1]}{start_date.split('-')[2]}"
 
-        end_datetime = date_time - timedelta(days=1)
+        end_datetime = date_time - timedelta(days=MIN_DAYS_DELTA)
         end_date = end_datetime.__str__().split(" ")[0]
         end_date = f"{end_date.split('-')[0]}{end_date.split('-')[1]}{end_date.split('-')[2]}"
         
@@ -96,24 +131,28 @@ def append_dataset_NASA(date_time: datetime, loc: tuple, is_fire: bool):
         content = response.content.decode('utf-8')
         datas = json.loads(content)["properties"]["parameter"] # content dict
 
+
         for param in datas.keys():
-            for delta_days in range(1, DAYS_DELTA + 1):
+            for delta_days in range(MIN_DAYS_DELTA, DAYS_DELTA + 1):
                 # process datetime index
-                date, time = (date_time - timedelta(days=delta_days)).__str__().split(" ")
+                date, TIME = (date_time - timedelta(days=delta_days)).__str__().split(" ")
                 y, m, d = date.split("-")
-                h = time.split(":")[0]
+                h = TIME.split(":")[0]
                 date_time_str = f"{y}{m}{d}"
                 append_data_dict[f"{param}_{delta_days}d"] = [datas[param][date_time_str]]
-    
+
         df = pd.DataFrame(append_data_dict)
         df.to_csv(CSV_PATH, mode='a', header=initial, index=False)
-        return True
     
-    except:
-        print("Error Occurs")
+    except KeyError as e:
         print(response)
-        return False
+        print(e)
 
+        if response.status_code == 429:
+            time.sleep(300)
+
+    # sleep
+    time.sleep(10)
 
 def append_dataset(date_time: datetime, loc: tuple, is_fire: bool):
     # make file path
@@ -125,6 +164,7 @@ def append_dataset(date_time: datetime, loc: tuple, is_fire: bool):
 
     # process date (get the last five hours)
     start_datetime = date_time - timedelta(hours=5)
+
     # print(start_datetime)
     start_date_ymd = start_datetime.__str__().split(" ")[0]
     start_date_hms = start_datetime.__str__().split(" ")[1]
@@ -316,7 +356,6 @@ def read_fire_index(path="dataset/fire_index.csv"):
         date_time = datetime.datetime(y,m,d,h)
         date_times.append(date_time)
 
-    print(len(lngs), len(lats), len(date_times))
     return lngs, lats, date_times
 
 def read_no_fire_index(path="dataset/no_fire_index.csv"):
@@ -337,7 +376,6 @@ def read_no_fire_index(path="dataset/no_fire_index.csv"):
         date_time = datetime.datetime(y,m,d,h)
         date_times.append(date_time)
 
-    print(len(lngs), len(lats), len(date_times))
     return lngs, lats, date_times
 
 def make_dataset(start=0):
@@ -355,22 +393,8 @@ def make_dataset(start=0):
         nf_tuple = tuple([n_date_times[i], (n_lngs[i], n_lats[i]), 0])
         inputs.append(nf_tuple)
 
-    pool = Pool(30)
+    pool = Pool(60)
     res = pool.starmap(append_dataset_NASA, inputs)
-
-    # for i in range(min(len(n_lngs), len(lngs))):
-    #     print("i =", i)
-    #     print(f"lng: {lngs[i]}, lat: {lats[i]}, datetime: {date_times[i].__str__()}")
-    #     append_dataset_NASA(loc=(lngs[i], lats[i]), date_time=date_times[i], is_fire=True)  
-
-    #     print(f"lng: {n_lngs[i]}, lat: {n_lats[i]}, datetime: {n_date_times[i].__str__()}")
-    #     append_dataset_NASA(loc=(n_lngs[i], n_lats[i]), date_time=n_date_times[i], is_fire=False)
-    
-    # "sat_ndvi:idx"
-
-    # for i in range(len(n_lngs)):
-    #     print(f"lng: {n_lngs[i]}, lat: {n_lats[i]}, datetime: {n_date_times[i].__str__()}")
-    #     append_dataset(loc=(n_lngs[i], n_lats[i]), date_time=n_date_times[i], is_fire=False)  
 
 def push_data(source="dataset/dataset_temp.csv", target="dataset/dataset.csv"):
     initial =  not os.path.exists(target)
@@ -490,23 +514,50 @@ class FPDataset():
             self.dataset = torch.from_numpy(df.to_numpy()).to(torch.float32)
 
         elif mode == "RNN":
-            # TODO: Add day data
-            max_hours = 5
-            cols = df.columns
-            cols_h = []
-            for h in range(max_hours):
-                cols_h.append([x for x in cols if (f"{h}h" in x)])
+            # ensure, should not change
+            MIN_DAYS_DELTA = 3
+            HOURS_DELTA = 12
+            DAYS_DELTA = 12
+            MONTHS_DELTA = 4
 
+            # TODO: Add day data
+            cols = df.columns
+            cols_m = []
+            cols_d = []
+
+            # select cols
+            for m in range(1, MONTHS_DELTA + 1): # 1 ~ 5
+                cols_m.append([x for x in cols if (f"_{m}m" in x)])
+
+            for d in range(MIN_DAYS_DELTA, DAYS_DELTA + 1):
+                cols_d.append([x for x in cols if (f"_{m}m" in x)])
+            
+            # print(cols_d)
+
+            # month / hours
             data_array = []
             for i in range(df.shape[0]):
                 data_array.append([])
-                for h in range(max_hours):
-                    hour_data = df.iloc[i, :].loc[cols_h[h]]
+                for m in range(MONTHS_DELTA): # the index should -1
+                    month_data = df.iloc[i, :].loc[cols_m[m]]
                     # print(hour_data)
-                    hour_data = hour_data.to_list()
-                    data_array[-1].append(hour_data)
+                    month_data = month_data.to_list()
+                    data_array[-1].append(month_data)
             data_torch = torch.Tensor(data_array).to(dtype=torch.float32)
-            self.dataset_hours = data_torch
+            self.dataset_months = data_torch
+
+            # days
+            data_array = []
+            for i in range(df.shape[0]):
+                data_array.append([])
+                for d in range(DAYS_DELTA - MIN_DAYS_DELTA + 1): # the 3, 4, ...., 12 -> 0, 1, ..., 9
+                    day_data = df.iloc[i, :].loc[cols_d[d]]
+                    # print(hour_data)
+                    day_data = day_data.to_list()
+                    data_array[-1].append(day_data)
+            data_torch = torch.Tensor(data_array).to(dtype=torch.float32)
+            self.dataset_days = data_torch
+
             # print(data_torch.shape)
                 
         else:
@@ -525,56 +576,35 @@ class FPDataset():
         elif self.mode == "RNN":
             # TODO: Days dataset
             if self.stage == "train":
-                return self.dataset_hours[index], self.is_fire[index]
+                return self.dataset_months[index], self.dataset_days[index], self.is_fire[index]
             elif self.stage == "test":
-                return self.dataset[index]
+                return self.dataset_months[index], self.dataset_days[index]
             else:
                 print("wrong input")
+                raise ValueError
         
     def __len__(self):
         if self.mode == "DNN":
             return self.dataset.shape[0]
         elif self.mode == "RNN":
-            return self.dataset_hours.shape[0]
+            return self.dataset_months.shape[0]
     
     def dim(self):
         if self.mode == "DNN":
             return self.dataset.shape[-1]
 
         elif self.mode == "RNN":
-            return self.dataset_hours.shape[-1]
+            return self.dataset_months.shape[-1], self.dataset_days.shape[-1]
 
 
 
 if __name__ == '__main__':
-    # df = pd.read_csv("dataset/no_fire_index.csv")
-    # drop_list = []
-    # for i in range(df.shape[0]):
-    #     ser = df.iloc[i]
-    #     if type(ser["acq_date"]) is not str:
-    #         drop_list.append(i)
-    #         continue
-    #     try:
-    #         y, m, d = ser["acq_date"].split("-")
-    #         if int(m) < 10:
-    #             m = "0" + m
-    #             print(m)
-    #         if int(d) < 10:
-    #             d = "0" + d
-    #         date = "-".join([y, m, d])
-    #         print(date)
-    #         df.loc[i, "acq_date"] = date
-    #     except:
-    #         print("error")
-    #         drop_list.append(i)
 
-    
-    # df = df.drop(drop_list, axis=0)
-    # df.to_csv("no_fire.csv", index=False)    
+    make_dataset(240)
 
-    make_dataset(start=300)
-
-    # for i, (x, y) in enumerate(data):
+    # data = FPDataset("train", "RNN")
+    # for i, (x, y, z) in enumerate(data):
     #     if i > 0:
     #         break
-    #     print(x.shape)
+    #     print(x.shape) # month
+    #     print(y.shape) # day
